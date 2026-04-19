@@ -61,11 +61,11 @@ public class NotificationReceiver extends BroadcastReceiver {
         data.put("content", content);
 
         // Use resized versions instead of raw bytes
-        data.put("notificationIcon", resizeIcon(notificationIcon));
+        //data.put("notificationIcon", resizeIcon(notificationIcon));
         data.put("notificationExtrasPicture", resizeIcon(notificationExtrasPicture));
         data.put("largeIcon", resizeIcon(largeIcon));
 
-        data.put("haveExtraPicture", haveExtraPicture);
+        //data.put("haveExtraPicture", haveExtraPicture);
         data.put("hasRemoved", hasRemoved);
         data.put("canReply", canReply);
         data.put("onGoing", isOngoing);
