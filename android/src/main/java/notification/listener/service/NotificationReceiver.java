@@ -6,11 +6,14 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build.VERSION_CODES;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 
 import androidx.annotation.RequiresApi;
 
 import io.flutter.plugin.common.EventChannel.EventSink;
 
+import java.io.ByteArrayOutputStream;
 import java.util.HashMap;
 
 public class NotificationReceiver extends BroadcastReceiver {
@@ -19,6 +22,21 @@ public class NotificationReceiver extends BroadcastReceiver {
 
     public NotificationReceiver(EventSink eventSink) {
         this.eventSink = eventSink;
+    }
+
+    private byte[] resizeIcon(byte[] rawBytes) {
+        if (rawBytes == null) return null;
+        Bitmap original = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.length);
+        if (original == null) return null;
+
+        // Resize to 64x64 pixels (adjust as needed)
+        Bitmap scaled = Bitmap.createScaledBitmap(original, 64, 64, true);
+
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        // Compress to PNG with 80% quality
+        scaled.compress(Bitmap.CompressFormat.PNG, 80, stream);
+
+        return stream.toByteArray();
     }
 
     @RequiresApi(api = VERSION_CODES.JELLY_BEAN_MR2)
@@ -36,16 +54,18 @@ public class NotificationReceiver extends BroadcastReceiver {
         boolean isOngoing = intent.getBooleanExtra(IS_ONGOING, false);
         int id = intent.getIntExtra(ID, -1);
 
-
         HashMap<String, Object> data = new HashMap<>();
         data.put("id", id);
         data.put("packageName", packageName);
         data.put("title", title);
         data.put("content", content);
-        data.put("notificationIcon", notificationIcon);
-        data.put("notificationExtrasPicture", notificationExtrasPicture);
+
+        // Use resized versions instead of raw bytes
+        data.put("notificationIcon", resizeIcon(notificationIcon));
+        data.put("notificationExtrasPicture", resizeIcon(notificationExtrasPicture));
+        data.put("largeIcon", resizeIcon(largeIcon));
+
         data.put("haveExtraPicture", haveExtraPicture);
-        data.put("largeIcon", largeIcon);
         data.put("hasRemoved", hasRemoved);
         data.put("canReply", canReply);
         data.put("onGoing", isOngoing);
