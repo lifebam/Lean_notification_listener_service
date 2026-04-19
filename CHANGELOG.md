@@ -1,3 +1,13 @@
+## \## 0.1.0
+
+## \- Forked notification\_listener\_service
+
+## \- Added icon resizing before sending to Dart
+
+## \- Fixed imports and defined ServiceNotificationEvent
+
+
+
 ## 0.3.6-dev.1
 
 * Add onGoing flag for Notification

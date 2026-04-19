@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:notification_listener_service/notification_listener_service.dart';
+import 'package:notification_listener_service_resized/notification_listener_service.dart';
+
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
