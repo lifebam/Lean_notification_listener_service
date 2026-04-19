@@ -62,7 +62,7 @@ public class NotificationListener extends NotificationListenerService {
         String packageName = notification.getPackageName();
         Bundle extras = notification.getNotification().extras;
         boolean isOngoing = (notification.getNotification().flags & Notification.FLAG_ONGOING_EVENT) != 0;
-        byte[] appIcon = getAppIcon(packageName);
+        //byte[] appIcon = getAppIcon(packageName);
         byte[] largeIcon = null;
         Action action = NotificationUtils.getQuickReplyAction(notification.getNotification(), packageName);
 
@@ -80,8 +80,8 @@ public class NotificationListener extends NotificationListenerService {
             cachedNotifications.put(notification.getId(), action);
         }
 
-        intent.putExtra(NotificationConstants.NOTIFICATIONS_ICON, appIcon);
-        intent.putExtra(NotificationConstants.NOTIFICATIONS_LARGE_ICON, largeIcon);
+        //intent.putExtra(NotificationConstants.NOTIFICATIONS_ICON, appIcon);
+        //intent.putExtra(NotificationConstants.NOTIFICATIONS_LARGE_ICON, largeIcon);
 
         if (extras != null) {
             CharSequence title = extras.getCharSequence(Notification.EXTRA_TITLE);
