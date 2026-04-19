@@ -93,15 +93,15 @@ public class NotificationListener extends NotificationListenerService {
             intent.putExtra(NotificationConstants.HAVE_EXTRA_PICTURE, extras.containsKey(Notification.EXTRA_PICTURE));
 
             if (extras.containsKey(Notification.EXTRA_PICTURE)) {
-                Bitmap bmp = (Bitmap) extras.get(Notification.EXTRA_PICTURE);
-                if (bmp != null) {
-                    ByteArrayOutputStream stream = new ByteArrayOutputStream();
-                    bmp.compress(Bitmap.CompressFormat.PNG, 100, stream);
-                    intent.putExtra(NotificationConstants.EXTRAS_PICTURE, stream.toByteArray());
-                } else {
-                    Log.w("NotificationListener", "Notification.EXTRA_PICTURE exists but is null.");
-                }
-            }
+    		Bitmap bmp = (Bitmap) extras.get(Notification.EXTRA_PICTURE);
+    		if (bmp != null) {
+        		Bitmap scaled = Bitmap.createScaledBitmap(bmp, 64, 64, true);
+        		ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        		scaled.compress(Bitmap.CompressFormat.JPEG, 40, stream);
+        		intent.putExtra(NotificationConstants.EXTRAS_PICTURE, stream.toByteArray());
+    		}
+	    }
+
         }
         sendBroadcast(intent);
     }
