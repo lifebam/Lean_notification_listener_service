@@ -63,7 +63,7 @@ public class NotificationListener extends NotificationListenerService {
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
          // Supprime l'action du cache pour libérer la mémoire
-    	ActionCache.cachedNotifications.remove(sbn.getId());
+    	//ActionCache.cachedNotifications.remove(sbn.getId());
 	handleNotification(sbn, true);
     }
 
