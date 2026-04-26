@@ -24,17 +24,33 @@ public class NotificationReceiver extends BroadcastReceiver {
         this.eventSink = eventSink;
     }
 
-    private byte[] resizeIcon(byte[] rawBytes) {
+    // Compress and scale until under maxBytes
+    private byte[] compressUnderLimit(byte[] rawBytes, int maxBytes) {
         if (rawBytes == null) return null;
-        Bitmap original = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.length);
-        if (original == null) return null;
+        Bitmap bmp = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.length);
+        if (bmp == null) return null;
 
-        // Resize to 64x64 pixels (adjust as needed)
-        Bitmap scaled = Bitmap.createScaledBitmap(original, 64, 64, true);
+        int quality = 100;
+        int width = bmp.getWidth();
+        int height = bmp.getHeight();
 
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
-        // Compress to PNG with 80% quality
-        scaled.compress(Bitmap.CompressFormat.PNG, 80, stream);
+        bmp.compress(Bitmap.CompressFormat.JPEG, quality, stream);
+
+        while (stream.size() > maxBytes && (quality > 10 || width > 64)) {
+            stream.reset();
+
+            if (quality > 10) {
+                quality -= 10; // reduce quality first
+            } else {
+                // scale down dimensions
+                width = (int)(width * 0.8);
+                height = (int)(height * 0.8);
+                bmp = Bitmap.createScaledBitmap(bmp, width, height, true);
+            }
+
+            bmp.compress(Bitmap.CompressFormat.JPEG, quality, stream);
+        }
 
         return stream.toByteArray();
     }
@@ -45,7 +61,7 @@ public class NotificationReceiver extends BroadcastReceiver {
         String packageName = intent.getStringExtra(PACKAGE_NAME);
         String title = intent.getStringExtra(NOTIFICATION_TITLE);
         String content = intent.getStringExtra(NOTIFICATION_CONTENT);
-        //byte[] notificationIcon = intent.getByteArrayExtra(NOTIFICATIONS_ICON);
+        byte[] notificationIcon = intent.getByteArrayExtra(NOTIFICATIONS_ICON);
         byte[] notificationExtrasPicture = intent.getByteArrayExtra(EXTRAS_PICTURE);
         byte[] largeIcon = intent.getByteArrayExtra(NOTIFICATIONS_LARGE_ICON);
         boolean haveExtraPicture = intent.getBooleanExtra(HAVE_EXTRA_PICTURE, false);
@@ -60,10 +76,10 @@ public class NotificationReceiver extends BroadcastReceiver {
         data.put("title", title);
         data.put("content", content);
 
-        // Use resized versions instead of raw bytes
-        //data.put("notificationIcon", resizeIcon(notificationIcon));
-        data.put("notificationExtrasPicture",notificationExtrasPicture);
-        data.put("largeIcon", largeIcon);
+        // Apply compression to all images
+        data.put("notificationIcon", compressUnderLimit(notificationIcon, 1024 * 1024));
+        data.put("notificationExtrasPicture", compressUnderLimit(notificationExtrasPicture, 1024 * 1024));
+        data.put("largeIcon", compressUnderLimit(largeIcon, 1024 * 1024));
 
         data.put("haveExtraPicture", haveExtraPicture);
         data.put("hasRemoved", hasRemoved);

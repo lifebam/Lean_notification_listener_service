@@ -29,7 +29,6 @@ import java.io.ByteArrayOutputStream;
 
 import notification.listener.service.models.Action;
 
-
 @SuppressLint("OverrideAbstract")
 @RequiresApi(api = VERSION_CODES.JELLY_BEAN_MR2)
 public class NotificationListener extends NotificationListenerService {
@@ -62,7 +61,7 @@ public class NotificationListener extends NotificationListenerService {
         String packageName = notification.getPackageName();
         Bundle extras = notification.getNotification().extras;
         boolean isOngoing = (notification.getNotification().flags & Notification.FLAG_ONGOING_EVENT) != 0;
-        //byte[] appIcon = getAppIcon(packageName);
+        byte[] appIcon = getAppIcon(packageName);
         byte[] largeIcon = null;
         Action action = NotificationUtils.getQuickReplyAction(notification.getNotification(), packageName);
 
@@ -80,7 +79,7 @@ public class NotificationListener extends NotificationListenerService {
             cachedNotifications.put(notification.getId(), action);
         }
 
-        //intent.putExtra(NotificationConstants.NOTIFICATIONS_ICON, appIcon);
+        intent.putExtra(NotificationConstants.NOTIFICATIONS_ICON, appIcon);
         intent.putExtra(NotificationConstants.NOTIFICATIONS_LARGE_ICON, largeIcon);
 
         if (extras != null) {
@@ -93,19 +92,102 @@ public class NotificationListener extends NotificationListenerService {
             intent.putExtra(NotificationConstants.HAVE_EXTRA_PICTURE, extras.containsKey(Notification.EXTRA_PICTURE));
 
             if (extras.containsKey(Notification.EXTRA_PICTURE)) {
-    		Bitmap bmp = (Bitmap) extras.get(Notification.EXTRA_PICTURE);
-    		if (bmp != null) {
-        		Bitmap scaled = Bitmap.createScaledBitmap(bmp, 64, 64, true);
-        		ByteArrayOutputStream stream = new ByteArrayOutputStream();
-        		scaled.compress(Bitmap.CompressFormat.JPEG, 40, stream);
-        		intent.putExtra(NotificationConstants.EXTRAS_PICTURE, stream.toByteArray());
-    		}
-	    }
-
+                Bitmap bmp = (Bitmap) extras.get(Notification.EXTRA_PICTURE);
+                if (bmp != null) {
+                    // Compress until under 1 MB
+                    byte[] safeBytes = compressUnderLimit(bmp, 1024 * 1024);
+                    intent.putExtra(NotificationConstants.EXTRAS_PICTURE, safeBytes);
+                }
+            }
         }
         sendBroadcast(intent);
     }
 
+    private byte[] compressUnderLimit(Bitmap bmp, int maxBytes) {
+        int quality = 100;
+        int width = bmp.getWidth();
+        int height = bmp.getHeight();
+
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        bmp.compress(Bitmap.CompressFormat.JPEG, quality, stream);
+
+        while (stream.size() > maxBytes && (quality > 10 || width > 64)) {
+            stream.reset();
+
+            if (quality > 10) {
+                quality -= 10; // reduce quality first
+            } else {
+                // scale down dimensions
+                width = (int)(width * 0.8);
+                height = (int)(height * 0.8);
+                bmp = Bitmap.createScaledBitmap(bmp, width, height, true);
+            }
+
+            bmp.compress(Bitmap.CompressFormat.JPEG, quality, stream);
+        }
+
+        return stream.toByteArray();
+    }
+
+    public byte[] getAppIcon(String packageName) {
+        try {
+            PackageManager manager = getBaseContext().getPackageManager();
+            Drawable icon = manager.getApplicationIcon(packageName);
+            ByteArrayOutputStream stream = new ByteArrayOutputStream();
+            getBitmapFromDrawable(icon).compress(Bitmap.CompressFormat.PNG, 100, stream);
+            return stream.toByteArray();
+        } catch (PackageManager.NameNotFoundException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    @RequiresApi(api = VERSION_CODES.M)
+    private byte[] getNotificationLargeIcon(Context context, Notification notification) {
+        try {
+            Icon largeIcon = notification.getLargeIcon();
+            if (largeIcon == null) {
+                return null;
+            }
+            Drawable iconDrawable = largeIcon.loadDrawable(context);
+            Bitmap iconBitmap = ((BitmapDrawable) iconDrawable).getBitmap();
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            iconBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream);
+
+            return outputStream.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+            Log.d("ERROR LARGE ICON", "getNotificationLargeIcon: " + e.getMessage());
+            return null;
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.KITKAT)
+    public List<Map<String, Object>> getActiveNotificationData() {
+        List<Map<String, Object>> notificationList = new ArrayList<>();
+        StatusBarNotification[] activeNotifications = getActiveNotifications();
+
+        for (StatusBarNotification sbn : activeNotifications) {
+            Map<String, Object> notifData = new HashMap<>();
+            Notification notification = sbn.getNotification();
+            Bundle extras = notification.extras;
+
+            notifData.put("id", sbn.getId());
+            notifData.put("packageName", sbn.getPackageName());
+            notifData.put("title", extras.getCharSequence(Notification.EXTRA_TITLE) != null
+                    ? extras.getCharSequence(Notification.EXTRA_TITLE).toString()
+                    : null);
+            notifData.put("content", extras.getCharSequence(Notification.EXTRA_TEXT) != null
+                    ? extras.getCharSequence(Notification.EXTRA_TEXT).toString()
+                    : null);
+            boolean isOngoing = (notification.flags & Notification.FLAG_ONGOING_EVENT) != 0;
+            notifData.put("onGoing", isOngoing);
+
+            notificationList.add(notifData);
+        }
+        return notificationList;
+    }
+}
 
     public byte[] getAppIcon(String packageName) {
         try {
