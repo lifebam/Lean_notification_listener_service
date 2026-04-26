@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
@@ -18,6 +19,7 @@ import android.os.Bundle;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
+
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
@@ -32,6 +34,7 @@ import notification.listener.service.models.Action;
 @SuppressLint("OverrideAbstract")
 @RequiresApi(api = VERSION_CODES.JELLY_BEAN_MR2)
 public class NotificationListener extends NotificationListenerService {
+    private static final String TAG = "NotificationListener";
     private static NotificationListener instance;
 
     public static NotificationListener getInstance() {
@@ -44,6 +47,12 @@ public class NotificationListener extends NotificationListenerService {
         instance = this;
     }
 
+    @Override
+    public void onListenerDisconnected() {
+        super.onListenerDisconnected();
+        instance = null;
+    }
+
     @RequiresApi(api = VERSION_CODES.KITKAT)
     @Override
     public void onNotificationPosted(StatusBarNotification notification) {
@@ -53,20 +62,26 @@ public class NotificationListener extends NotificationListenerService {
     @RequiresApi(api = VERSION_CODES.KITKAT)
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
-        handleNotification(sbn, true);
+         // Supprime l'action du cache pour libérer la mémoire
+    	ActionCache.cachedNotifications.remove(sbn.getId());
+	handleNotification(sbn, true);
     }
 
     @RequiresApi(api = VERSION_CODES.KITKAT)
     private void handleNotification(StatusBarNotification notification, boolean isRemoved) {
         String packageName = notification.getPackageName();
-        Bundle extras = notification.getNotification().extras;
-        boolean isOngoing = (notification.getNotification().flags & Notification.FLAG_ONGOING_EVENT) != 0;
+        Notification notif = notification.getNotification();
+        Bundle extras = notif.extras;
+        boolean isOngoing = (notif.flags & Notification.FLAG_ONGOING_EVENT) != 0;
+        
         byte[] appIcon = getAppIcon(packageName);
         byte[] largeIcon = null;
-        Action action = NotificationUtils.getQuickReplyAction(notification.getNotification(), packageName);
+        
+        // On récupère l'action une seule fois
+        Action action = NotificationUtils.getQuickReplyAction(notif, packageName);
 
         if (Build.VERSION.SDK_INT >= VERSION_CODES.M) {
-            largeIcon = getNotificationLargeIcon(getApplicationContext(), notification.getNotification());
+            largeIcon = getNotificationLargeIcon(getApplicationContext(), notif);
         }
 
         Intent intent = new Intent(NotificationConstants.INTENT);
@@ -75,7 +90,7 @@ public class NotificationListener extends NotificationListenerService {
         intent.putExtra(NotificationConstants.CAN_REPLY, action != null);
         intent.putExtra(NotificationConstants.IS_ONGOING, isOngoing);
 
-        if (NotificationUtils.getQuickReplyAction(notification.getNotification(), packageName) != null) {
+        if (action != null) {
             cachedNotifications.put(notification.getId(), action);
         }
 
@@ -89,55 +104,54 @@ public class NotificationListener extends NotificationListenerService {
             intent.putExtra(NotificationConstants.NOTIFICATION_TITLE, title == null ? null : title.toString());
             intent.putExtra(NotificationConstants.NOTIFICATION_CONTENT, text == null ? null : text.toString());
             intent.putExtra(NotificationConstants.IS_REMOVED, isRemoved);
-            intent.putExtra(NotificationConstants.HAVE_EXTRA_PICTURE, extras.containsKey(Notification.EXTRA_PICTURE));
-
+            
             if (extras.containsKey(Notification.EXTRA_PICTURE)) {
-                Bitmap bmp = (Bitmap) extras.get(Notification.EXTRA_PICTURE);
-                if (bmp != null) {
-                    // Compress until under 1 MB
-                    byte[] safeBytes = compressUnderLimit(bmp, 1024 * 1024);
+                intent.putExtra(NotificationConstants.HAVE_EXTRA_PICTURE, true);
+                Object photo = extras.get(Notification.EXTRA_PICTURE);
+                if (photo instanceof Bitmap) {
+                    // Limite à 100Ko pour éviter TransactionTooLargeException
+                    byte[] safeBytes = compressUnderLimit((Bitmap) photo, 100 * 1024);
                     intent.putExtra(NotificationConstants.EXTRAS_PICTURE, safeBytes);
                 }
+            } else {
+                intent.putExtra(NotificationConstants.HAVE_EXTRA_PICTURE, false);
             }
         }
         sendBroadcast(intent);
     }
 
     private byte[] compressUnderLimit(Bitmap bmp, int maxBytes) {
-        int quality = 100;
+        int quality = 90;
         int width = bmp.getWidth();
         int height = bmp.getHeight();
-
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        
         bmp.compress(Bitmap.CompressFormat.JPEG, quality, stream);
 
-        while (stream.size() > maxBytes && (quality > 10 || width > 64)) {
+        // Boucle de réduction agressive pour ne pas bloquer le Binder
+        while (stream.size() > maxBytes && quality > 10) {
             stream.reset();
-
-            if (quality > 10) {
-                quality -= 10; // reduce quality first
-            } else {
-                // scale down dimensions
-                width = (int)(width * 0.8);
-                height = (int)(height * 0.8);
+            quality -= 15;
+            if (quality < 30) { // Si la qualité baisse trop, on réduit la taille
+                width *= 0.8;
+                height *= 0.8;
                 bmp = Bitmap.createScaledBitmap(bmp, width, height, true);
             }
-
             bmp.compress(Bitmap.CompressFormat.JPEG, quality, stream);
         }
-
         return stream.toByteArray();
     }
 
     public byte[] getAppIcon(String packageName) {
         try {
-            PackageManager manager = getBaseContext().getPackageManager();
-            Drawable icon = manager.getApplicationIcon(packageName);
+            Drawable icon = getPackageManager().getApplicationIcon(packageName);
+            Bitmap bitmap = getBitmapFromDrawable(icon);
+            if (bitmap == null) return null;
+            
             ByteArrayOutputStream stream = new ByteArrayOutputStream();
-            getBitmapFromDrawable(icon).compress(Bitmap.CompressFormat.PNG, 100, stream);
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
             return stream.toByteArray();
-        } catch (PackageManager.NameNotFoundException e) {
-            e.printStackTrace();
+        } catch (Exception e) {
             return null;
         }
     }
@@ -146,18 +160,18 @@ public class NotificationListener extends NotificationListenerService {
     private byte[] getNotificationLargeIcon(Context context, Notification notification) {
         try {
             Icon largeIcon = notification.getLargeIcon();
-            if (largeIcon == null) {
-                return null;
-            }
-            Drawable iconDrawable = largeIcon.loadDrawable(context);
-            Bitmap iconBitmap = ((BitmapDrawable) iconDrawable).getBitmap();
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            iconBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream);
+            if (largeIcon == null) return null;
 
+            Drawable drawable = largeIcon.loadDrawable(context);
+            Bitmap bitmap = getBitmapFromDrawable(drawable); // Utilisation de ta méthode utilitaire
+            
+            if (bitmap == null) return null;
+
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream);
             return outputStream.toByteArray();
         } catch (Exception e) {
-            e.printStackTrace();
-            Log.d("ERROR LARGE ICON", "getNotificationLargeIcon: " + e.getMessage());
+            Log.e(TAG, "Error extraction large icon", e);
             return null;
         }
     }
@@ -165,87 +179,29 @@ public class NotificationListener extends NotificationListenerService {
     @RequiresApi(api = Build.VERSION_CODES.KITKAT)
     public List<Map<String, Object>> getActiveNotificationData() {
         List<Map<String, Object>> notificationList = new ArrayList<>();
-        StatusBarNotification[] activeNotifications = getActiveNotifications();
-
-        for (StatusBarNotification sbn : activeNotifications) {
-            Map<String, Object> notifData = new HashMap<>();
-            Notification notification = sbn.getNotification();
-            Bundle extras = notification.extras;
-
-            notifData.put("id", sbn.getId());
-            notifData.put("packageName", sbn.getPackageName());
-            notifData.put("title", extras.getCharSequence(Notification.EXTRA_TITLE) != null
-                    ? extras.getCharSequence(Notification.EXTRA_TITLE).toString()
-                    : null);
-            notifData.put("content", extras.getCharSequence(Notification.EXTRA_TEXT) != null
-                    ? extras.getCharSequence(Notification.EXTRA_TEXT).toString()
-                    : null);
-            boolean isOngoing = (notification.flags & Notification.FLAG_ONGOING_EVENT) != 0;
-            notifData.put("onGoing", isOngoing);
-
-            notificationList.add(notifData);
-        }
-        return notificationList;
-    }
-}
-
-    public byte[] getAppIcon(String packageName) {
         try {
-            PackageManager manager = getBaseContext().getPackageManager();
-            Drawable icon = manager.getApplicationIcon(packageName);
-            ByteArrayOutputStream stream = new ByteArrayOutputStream();
-            getBitmapFromDrawable(icon).compress(Bitmap.CompressFormat.PNG, 100, stream);
-            return stream.toByteArray();
-        } catch (PackageManager.NameNotFoundException e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
+            StatusBarNotification[] activeNotifications = getActiveNotifications();
+            if (activeNotifications == null) return notificationList;
 
-    @RequiresApi(api = VERSION_CODES.M)
-    private byte[] getNotificationLargeIcon(Context context, Notification notification) {
-        try {
-            Icon largeIcon = notification.getLargeIcon();
-            if (largeIcon == null) {
-                return null;
+            for (StatusBarNotification sbn : activeNotifications) {
+                Map<String, Object> notifData = new HashMap<>();
+                Bundle extras = sbn.getNotification().extras;
+
+                notifData.put("id", sbn.getId());
+                notifData.put("packageName", sbn.getPackageName());
+                notifData.put("title", extras.getCharSequence(Notification.EXTRA_TITLE) != null
+                        ? extras.getCharSequence(Notification.EXTRA_TITLE).toString() : null);
+                notifData.put("content", extras.getCharSequence(Notification.EXTRA_TEXT) != null
+                        ? extras.getCharSequence(Notification.EXTRA_TEXT).toString() : null);
+                notifData.put("onGoing", (sbn.getNotification().flags & Notification.FLAG_ONGOING_EVENT) != 0);
+
+                notificationList.add(notifData);
             }
-            Drawable iconDrawable = largeIcon.loadDrawable(context);
-            Bitmap iconBitmap = ((BitmapDrawable) iconDrawable).getBitmap();
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            iconBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream);
-
-            return outputStream.toByteArray();
         } catch (Exception e) {
-            e.printStackTrace();
-            Log.d("ERROR LARGE ICON", "getNotificationLargeIcon: " + e.getMessage());
-            return null;
-        }
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.KITKAT)
-    public List<Map<String, Object>> getActiveNotificationData() {
-        List<Map<String, Object>> notificationList = new ArrayList<>();
-        StatusBarNotification[] activeNotifications = getActiveNotifications();
-
-        for (StatusBarNotification sbn : activeNotifications) {
-            Map<String, Object> notifData = new HashMap<>();
-            Notification notification = sbn.getNotification();
-            Bundle extras = notification.extras;
-
-            notifData.put("id", sbn.getId());
-            notifData.put("packageName", sbn.getPackageName());
-            notifData.put("title", extras.getCharSequence(Notification.EXTRA_TITLE) != null
-                    ? extras.getCharSequence(Notification.EXTRA_TITLE).toString()
-                    : null);
-            notifData.put("content", extras.getCharSequence(Notification.EXTRA_TEXT) != null
-                    ? extras.getCharSequence(Notification.EXTRA_TEXT).toString()
-                    : null);
-            boolean isOngoing = (notification.flags & Notification.FLAG_ONGOING_EVENT) != 0;
-            notifData.put("onGoing", isOngoing);
-
-            notificationList.add(notifData);
+            Log.e(TAG, "Error getting active notifications", e);
         }
         return notificationList;
     }
-
 }
+
+

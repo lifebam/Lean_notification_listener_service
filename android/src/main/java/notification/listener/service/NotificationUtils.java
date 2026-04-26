@@ -22,17 +22,43 @@ public final class NotificationUtils {
     private static final CharSequence INPUT_KEYWORD = "input";
 
     public static Bitmap getBitmapFromDrawable(Drawable drawable) {
-        final Bitmap bmp = Bitmap.createBitmap(
-                drawable.getIntrinsicWidth(),
-                drawable.getIntrinsicHeight(),
-                Bitmap.Config.ARGB_8888);
-
-        final Canvas canvas = new Canvas(bmp);
-        drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
-        drawable.draw(canvas);
-
-        return bmp;
+    if (drawable == null) {
+        return null;
     }
+
+    // Si c'est déjà un BitmapDrawable, on peut extraire le bitmap directement
+    if (drawable instanceof BitmapDrawable) {
+        BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
+        if (bitmapDrawable.getBitmap() != null) {
+            return bitmapDrawable.getBitmap();
+        }
+    }
+
+    // Gestion sécurisée de la taille (évite le crash si intrinsicWidth == -1)
+    int width = drawable.getIntrinsicWidth() > 0 ? drawable.getIntrinsicWidth() : 1;
+    int height = drawable.getIntrinsicHeight() > 0 ? drawable.getIntrinsicHeight() : 1;
+
+    // On limite la taille pour les icônes très larges pour économiser la mémoire
+    int maxWidth = 512;
+    if (width > maxWidth || height > maxWidth) {
+        float ratio = (float) width / height;
+        if (width > height) {
+            width = maxWidth;
+            height = (int) (width / ratio);
+        } else {
+            height = maxWidth;
+            width = (int) (height * ratio);
+        }
+    }
+
+    Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+    Canvas canvas = new Canvas(bitmap);
+    drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+    drawable.draw(canvas);
+
+    return bitmap;
+}
+
 
     public static boolean isPermissionGranted(Context context) {
         String packageName = context.getPackageName();

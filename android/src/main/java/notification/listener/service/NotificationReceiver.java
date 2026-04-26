@@ -24,68 +24,30 @@ public class NotificationReceiver extends BroadcastReceiver {
         this.eventSink = eventSink;
     }
 
-    // Compress and scale until under maxBytes
-    private byte[] compressUnderLimit(byte[] rawBytes, int maxBytes) {
-        if (rawBytes == null) return null;
-        Bitmap bmp = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.length);
-        if (bmp == null) return null;
-
-        int quality = 100;
-        int width = bmp.getWidth();
-        int height = bmp.getHeight();
-
-        ByteArrayOutputStream stream = new ByteArrayOutputStream();
-        bmp.compress(Bitmap.CompressFormat.JPEG, quality, stream);
-
-        while (stream.size() > maxBytes && (quality > 10 || width > 64)) {
-            stream.reset();
-
-            if (quality > 10) {
-                quality -= 10; // reduce quality first
-            } else {
-                // scale down dimensions
-                width = (int)(width * 0.8);
-                height = (int)(height * 0.8);
-                bmp = Bitmap.createScaledBitmap(bmp, width, height, true);
-            }
-
-            bmp.compress(Bitmap.CompressFormat.JPEG, quality, stream);
-        }
-
-        return stream.toByteArray();
-    }
-
     @RequiresApi(api = VERSION_CODES.JELLY_BEAN_MR2)
     @Override
     public void onReceive(Context context, Intent intent) {
-        String packageName = intent.getStringExtra(PACKAGE_NAME);
-        String title = intent.getStringExtra(NOTIFICATION_TITLE);
-        String content = intent.getStringExtra(NOTIFICATION_CONTENT);
-        byte[] notificationIcon = intent.getByteArrayExtra(NOTIFICATIONS_ICON);
-        byte[] notificationExtrasPicture = intent.getByteArrayExtra(EXTRAS_PICTURE);
-        byte[] largeIcon = intent.getByteArrayExtra(NOTIFICATIONS_LARGE_ICON);
-        boolean haveExtraPicture = intent.getBooleanExtra(HAVE_EXTRA_PICTURE, false);
-        boolean hasRemoved = intent.getBooleanExtra(IS_REMOVED, false);
-        boolean canReply = intent.getBooleanExtra(CAN_REPLY, false);
-        boolean isOngoing = intent.getBooleanExtra(IS_ONGOING, false);
-        int id = intent.getIntExtra(ID, -1);
+        if (eventSink == null) return;
 
         HashMap<String, Object> data = new HashMap<>();
-        data.put("id", id);
-        data.put("packageName", packageName);
-        data.put("title", title);
-        data.put("content", content);
+        
+        // Extraction simple des données
+        data.put("id", intent.getIntExtra(ID, -1));
+        data.put("packageName", intent.getStringExtra(PACKAGE_NAME));
+        data.put("title", intent.getStringExtra(NOTIFICATION_TITLE));
+        data.put("content", intent.getStringExtra(NOTIFICATION_CONTENT));
+        
+        // On passe les byte[] directement (ils ont déjà été compressés par le Service)
+        data.put("notificationIcon", intent.getByteArrayExtra(NOTIFICATIONS_ICON));
+        data.put("notificationExtrasPicture", intent.getByteArrayExtra(EXTRAS_PICTURE));
+        data.put("largeIcon", intent.getByteArrayExtra(NOTIFICATIONS_LARGE_ICON));
 
-        // Apply compression to all images
-        data.put("notificationIcon", compressUnderLimit(notificationIcon, 1024 * 1024));
-        data.put("notificationExtrasPicture", compressUnderLimit(notificationExtrasPicture, 1024 * 1024));
-        data.put("largeIcon", compressUnderLimit(largeIcon, 1024 * 1024));
+        data.put("haveExtraPicture", intent.getBooleanExtra(HAVE_EXTRA_PICTURE, false));
+        data.put("hasRemoved", intent.getBooleanExtra(IS_REMOVED, false));
+        data.put("canReply", intent.getBooleanExtra(CAN_REPLY, false));
+        data.put("onGoing", intent.getBooleanExtra(IS_ONGOING, false));
 
-        data.put("haveExtraPicture", haveExtraPicture);
-        data.put("hasRemoved", hasRemoved);
-        data.put("canReply", canReply);
-        data.put("onGoing", isOngoing);
-
+        // Envoi vers Flutter
         eventSink.success(data);
     }
 }

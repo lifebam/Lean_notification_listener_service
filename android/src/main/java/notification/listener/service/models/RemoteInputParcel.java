@@ -18,13 +18,18 @@ public class RemoteInputParcel implements Parcelable {
     private Bundle extras;
 
 
-    public RemoteInputParcel(RemoteInput input) {
-        label = input.getLabel().toString();
-        resultKey = input.getResultKey();
-        charSequenceToStringArray(input.getChoices());
-        allowFreeFormInput = input.getAllowFreeFormInput();
-        extras = input.getExtras();
+   public RemoteInputParcel(RemoteInput input) {
+    // Correction : Le label peut être nul (ex: certaines notifications système)
+    this.label = (input.getLabel() != null) ? input.getLabel().toString() : "";
+    this.resultKey = input.getResultKey();
+    
+    // On remplit le tableau de choix via ta méthode existante
+    this.charSequenceToStringArray(input.getChoices());
+    
+    this.allowFreeFormInput = input.getAllowFreeFormInput();
+    this.extras = input.getExtras();
     }
+
 
     public RemoteInputParcel(Parcel in) {
         label = in.readString();
