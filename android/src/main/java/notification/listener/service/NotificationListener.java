@@ -81,7 +81,7 @@ public class NotificationListener extends NotificationListenerService {
         }
 
         //intent.putExtra(NotificationConstants.NOTIFICATIONS_ICON, appIcon);
-        //intent.putExtra(NotificationConstants.NOTIFICATIONS_LARGE_ICON, largeIcon);
+        intent.putExtra(NotificationConstants.NOTIFICATIONS_LARGE_ICON, largeIcon);
 
         if (extras != null) {
             CharSequence title = extras.getCharSequence(Notification.EXTRA_TITLE);
